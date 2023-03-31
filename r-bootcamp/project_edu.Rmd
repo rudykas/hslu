@@ -1,0 +1,685 @@
+---
+title: "Does education increase happiness?"
+author: "Dmytro Rudyka & Muhammed Kazim Cakmak"
+date: "2023-02-23"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE,error=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE, error=FALSE, warning=FALSE)
+setwd("~/Switchdrive/SyncVM/R Bootcamp/project/29_Rudyka_Cakmak/")
+library(dplyr)
+library(readxl)
+library(DataExplorer)
+library(readxl)
+library(lattice)
+library(ggplot2)
+library(plotly)
+library(RColorBrewer)
+library(tidyr)
+library(sf)
+library(ggcorrplot)
+```
+
+We've always wondered why people learn. Everyone has different goals and needs, but probably everyone wants to be happy. We decided to find out if happiness and learning are related. 
+
+We have 2 exciting data sets which we want to investigate. Firstly we are diving into to "Happiness" dataset produced by "Sustainable Development Solutions Network" to see what the factors which make people happy are what the most happiest countries are. [Source of Dataset ](https://worldhappiness.report/ed/2022/#appendices-and-data)
+
+Secondly, we want to look at "Education" data set produced by "WorldBank". Data set includes information for different counties: level of schooling of the population, enrolment in additional  education, percentage of repeaters of the primary school and unemployment rate. [Source of Dataset](https://www.kaggle.com/datasets/denisadutca/education-indicators-2014-worldwide)
+
+Lastly we want to have a look if there is a correlation between happiness and education score. The main task of the project is to find the relationship between these two phenomena, and in the process try to find other factors that affect happiness.  
+
+
+# Happines Report
+
+Since 2002, the World Happiness Report has used statistical analysis to determine the world's happiest countries. In its 2022 update, the report concluded that Finland is the happiest country in the world. To determine the world's happiest country, researchers analyzed comprehensive Gallup polling data from 149 countries for the past three years, specifically monitoring performance in six particular categories: gross domestic product per capita, social support, healthy life expectancy, freedom to make your own life choices, generosity of the general population, and perceptions of internal and external corruption levels. 
+
+## Data preparation
+Let's have a quick look happiness dataset.
+
+```{r read_happiness, echo=FALSE, include=T}
+
+happiness <- read_excel("datasets/happiness.xls")
+
+
+str(happiness)
+
+```
+
+
+
+First thing we realized we have NA's. We need to get rid of these NA's. We have countries and values for 2005-2020 per countries. Let's have a look on the head of main columns of dataset. 
+
+```{r , echo=TRUE, include=T, error=FALSE}
+happiness <- na.omit(happiness)
+head(happiness[,1:5])
+```
+
+We see Afghanistan is the top of the list and it has many values for years. We want to see just one value for each column per countries.To do this, let's take a mean values for each column per countries.
+
+```{r head_happiness, echo=T, include=F, error=FALSE}
+
+
+df_country <- aggregate(happiness[c(-1, -2, -10, -11)], by=list(happiness$`Country name`), FUN=mean)
+colnames(df_country)[1] <- "Country"
+head(df_country)
+
+
+```
+
+
+## Investigation 
+
+"Life Ladder" shows how happy people in counties. In box plot, it seems half of the middle values ranges from 3 to  and its median is 5.5. That means there are happy countries and unhappy countries together.  Histogram is right skewed that means most of the values are close to zero. It says most of the countries are unhappy.
+
+```{r echo=FALSE, include=TRUE, error=FALSE}
+par(mfrow= c(1,2))
+
+boxplot(df_country$`Life Ladder`,
+        col = "orange",
+     ylab = "Happiness",
+     main = "Boxplot of Happiness")
+
+hist(df_country$`Life Ladder`,
+     col = "cyan4",
+     xlab = "Happiness",
+     ylab = "Number of Countries",
+     main = "Histogram of Happiness"
+     )
+```
+
+```{r countries11 plotly, echo = FALSE, include=FALSE}
+
+countries11 <- happiness %>% 
+  filter(`Country name` %in% c("USA", "Canada", "Germany", "France", "Italy", "India", "Japan", "Russia", "Ukraine", "Turkey", "Switzerland"))
+
+ts11 <-  ggplot(countries11, aes(x = year, y = `Life Ladder`, color = `Country name`))+
+  geom_line()+
+  ylab('Happiness') + 
+  xlab('Year')
+
+ts11
+```
+
+
+Here are the  happiest and unhappiest countries. Denmark is the most happy country. Finland is the second and Switzerland is the third Norway, Netherlands and Iceland are the other happy countries.
+Central African Republic is the most unhappy country, Burundi is the second and Togo is the third. Afghanistan, Rwanda and Tanzania are the others.
+
+```{r , echo=F, include=TRUE, error=FALSE}
+
+df_sorted<-  df_country[order(-df_country$`Life Ladder`),]
+(df_top <- head(df_sorted))
+df_bottom <- tail(df_sorted)
+
+df_mer <- rbind(df_top,df_bottom)
+
+ggplot(data = df_mer,
+       mapping = aes(y = `Life Ladder`,
+                     x = `Country`,
+                     colour = `Country`
+                     )) + 
+  geom_point()
+
+
++
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ylab("Happiness")
+
+
+```
+
+We are wondering how the difference of happiness looks like between the happiest country Denmark and unhappiest country Central African Republic. The difference is so clear.
+
+```{r, echo=FALSE, include=TRUE, error=FALSE}
+df_d <- happiness[happiness$`Country name`== "Denmark",]
+df_a <- happiness[happiness$`Country name`== "Central African Republic",]
+
+df_da <- happiness[happiness$`Country name`== "Denmark" | happiness$`Country name`== "Central African Republic" ,]
+
+
+df_da$`Country name` = as.factor(df_da$`Country name`)
+
+par(mfrow = c(1,3))
+
+plot(y = df_d$`Life Ladder`,
+     x = df_d$year,
+     type = "b",
+     lty = 1,
+     col = "red",
+     xlab = "Years",
+     ylab = "Happiness",
+     main = "Denmark"
+)
+
+plot(y = df_a$`Life Ladder`,
+     x = df_a$year,
+     type = "b",
+     lty = 1,
+     col = "black",
+     xlab = "Years",
+     ylab = "Happiness",
+     main = "Central African Republic"
+)
+
+plot(y = df_da$`Life Ladder`,
+     x = df_da$year,
+     col = df_da$`Country name`,
+     pch = "z",
+     xlab = "Years",
+     ylab = "Happiness",
+     main = "Denmark & Central African Republic",
+     )
+
+abline(h = 6,
+       col = "darkseagreen3",
+       lty = 2)
+
+text(x = 2014, y = 5.8, labels = "Difference is so clear", col = "blue")
+
+
+
+```
+
+
+
+We want to have a look at European Countries by years. People in Germany are becoming more happy by years while in Belgium it is opposite direction. Switzerland, Norway and Netherlands have more stable lines.The remained countries has fluctuating lines.
+
+```{r, echo=FALSE, include=TRUE, error=FALSE}
+df_eur_y <- happiness[happiness$`Country name` %in% c("Switzerland", "Austria", "Germany", "Italy", "France", "Netherlands", "Belgium", "Luxembourg", "Finland", "Denmark", "Norway"),]
+
+df_eur_y <- df_eur_y[,c(-10,-11)]
+colnames(df_eur_y)[1] <- "Country"
+
+xyplot(`Life Ladder` ~ year | `Country`, data = df_eur_y,
+       ylab= "Happiness",
+       type = c("p", "smooth", "g")
+       )
+
+```
+
+
+
+Let's see this in a box plots.It is obvious that Netherlands and Switzerland have narrow boxes while Italy , Germany and Finland have broad. That shows broadness of happiness range. 
+
+```{r reg with ggplot, echo=FALSE,include=TRUE, error=FALSE, warning=FALSE}
+ggplot(data = df_eur_y,
+       mapping = aes(x = `Country`, 
+                     y = `Life Ladder`,
+                     fill = `Country`)) +
+  geom_point(
+             color = "red",
+             alpha = 0.3) + 
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ylab("Happiness")
+
+```
+
+
+
+We see some European Countries regarding happiness values in the map.
+
+```{r echo=FALSE, include=FALSE, message= FALSE, warning=FALSE, error=FALSE}
+
+map <- st_read("map/world-administrative-boundaries.shp")
+
+
+```
+
+```{r echo = F, include = F}
+df_eur <- df_country[df_country$Country %in% c("Albania", "Andorra", "Austria", "Belarus", "Belgium", "Bosnia and Herzegovina", "Bulgaria", "Croatia", "Cyprus", "Czech Republic", "Denmark", "Estonia", "Finland", "France", "Germany", "Greece", "Hungary", "Iceland", "Ireland", "Italy", "Kosovo", "Latvia", "Liechtenstein", "Lithuania", "Luxembourg", "Malta", "Moldova", "Monaco", "Montenegro", "Netherlands", "North Macedonia", "Norway", "Poland", "Portugal", "Romania", "Russia", "San Marino", "Serbia", "Slovakia", "Slovenia", "Spain", "Sweden", "Switzerland", "Ukraine", "United Kingdom", "Vatican City", "Turkey"),]
+```
+
+
+```{r map }
+
+subset_map <- map[map$name %in% df_eur$Country, ]
+
+merged_data <- merge(subset_map, df_eur, by.x = "name", by.y = "Country")
+
+ggplot(merged_data) +
+  geom_sf(aes(fill = `Life Ladder`)) +
+  scale_fill_gradient(low = "white", high = "blue")
+
+```
+
+
+I guess you are wondering which factors have positive or negative effect on happiness. When we check correlation between happiness and the other factors, it seems there is a strong positive correlation between happiness and "LOG GDP per capita", "Social support", "Healthy life expectancy" and "Freedom to make life choices". "Perception of corruption" and happiness has negative strong correlation. 
+
+```{r correlation, echo=TRUE, include=TRUE}
+
+x<- cor(df_country[,-1], method = "pearson")
+
+ggcorrplot(x, colors = c("red","white","blue"),
+           title = "Correlation Matrix")
+
+```
+
+
+We have some hypothesis but we need to verify if the it is linear and if the linear model is statistically significant. p-values are smaller than 0.05 that means linear model is statistically significant. 
+
+```{r, echo=FALSE, include=TRUE, error=FALSE}
+lm_model <-  lm(`Life Ladder` ~ `Log GDP per capita` + `Social support` + `Healthy life expectancy at birth` + `Freedom to make life choices` + `Perceptions of corruption`, data = df_country)
+
+summary(lm_model)
+
+```
+*Happiness = -1.98 + 0.27 Social support + 2.45 Healthy life expectancy + 1.51 Freedom to make life choices - 0.68 Perceptions of corruption*
+
+Now, we are wondering being Generous means being more happy and we see that is true for some European Countries. Now, we are sure that if you are generous you should be happy :-)
+
+```{r, echo=FALSE,include=TRUE, error=FALSE, warning=FALSE, message= FALSE}
+
+ggplot(data = df_country,
+       mapping = aes(y = `Life Ladder`,
+                     x = `Generosity`
+                
+                     )) + 
+  geom_point() + 
+  geom_smooth(method="lm")+
+  ylab("Happiness")
+
+```
+
+
+When we look  at how Perception of Corruption effects happiness. It is clear that if people believe there are many corruption cases in their countries that makes them unhappy as well.
+
+```{r reg with lattice, echo=FALSE,include=TRUE, error=FALSE, message = FALSE}
+
+ggplot(data = df_country,
+       mapping = aes(y = `Life Ladder`,
+                     x = `Perceptions of corruption`
+                     
+                     )) + 
+  geom_point() + 
+  
+  geom_smooth(method='lm') +
+  ylab("Happiness")
+
+```
+
+
+
+
+
+<!-- # Education  -->
+
+
+<!-- Education is a fundamental human right and plays a vital role in the development of individuals, communities, and nations. In today's globalized and knowledge-based society, education is more important than ever. The impact of education is vast and can be seen in all aspects of life, from economic growth to social progress. Understanding the trends and patterns in education is essential to provide effective policies and programs that support learners and educators alike. -->
+
+<!-- In this report, we will analyze an education dataset sourced from Kaggle, which contains information on student performance, student demographics, and school characteristics. We will explore the relationships between these variables and examine factors that contribute to student success. Our analysis will offer insights into the state of education and identify opportunities for improvement. -->
+
+# Education Dataset
+
+
+Education is a fundamental human right and plays a vital role in the development of individuals, communities, and nations. The impact of education is vast and can be seen in all aspects of life, from economic growth to social progress. We are particularly interested on it's impact on happiness.
+
+In this report, we will analyze an education dataset sourced from WorldBank, which contains information of amount of Out-of-school children of Primary School, Percentage of repeaters in Primary Education, Enrolment in Secondary Education, Enrolment in Primary Education, Unemployment,
+Life expectancy at birth and Theoretical Duration of Primary Education. We will explore the relationships between these variables and examine factors that contribute to Happiness overall. 
+
+## Data preparation 
+Reading the table into dataframe and look at it's structure.
+
+
+```{r reading, echo=FALSE,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+edu <- read.csv('datasets/education.csv')
+
+# colnames(edu)
+# summary(edu)
+str(edu)
+
+```
+
+
+Adding column with GDP per Capita by dividing overall GDP to Population Also creating new column with relative value of enrolments to Secondary education PES = Enrollments for sec. ed. / population and the same for primary education, PEP
+
+```{r new columns, echo=TRUE}
+
+edu$GDPPC <- edu$GDP/edu$PPT
+edu$PES <- edu$ESE/edu$PPT*100
+edu$PEP <- edu$EPE/edu$PPT*100
+
+head(edu[,c("GDPPC", "PES", "PEP" )])
+```
+
+## Investigation
+
+Let's graph GDP per capita against unemployment rate, Life expectancy and Theoretical duration of primary education on the paired graphs.
+
+```{r pairs edu, echo=FALSE,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+pairs(GDPPC ~ PES + UNEMP + LEB + TDP, data = edu,
+      col = "darkseagreen3",
+      main = "Correlation Graph (Education)")
+```
+
+We can guess some correlation, so let's check it explicitly. Between GDP per capita and Percentage of enrollments to secondary edu, unemployment rate, Life expectancy and Theoretical duration of primary education. Correlational matrix with numbers and prominent colors: 
+```{r cor edu, echo=FALSE,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+
+co <- cor(edu[,-c(1:7)])
+co
+
+```
+```{r colour cor, echo = F }
+ggcorrplot(co, colors = c("red","white","blue"),
+           title = "Correlation Matrix")
+
+```
+
+The biggest positive correlation is going one between GDPPC and LEB (life expectancy) 0.66  and 0.44 for Life expectancy and PES (Percentage of Enrolments in Secondary education) that means that overall people's life is longer when they study more.
+
+ALso we want to calculate linear regression to look on relationship of Life expectancy from GDP per capita, and other factors as unemployment rate, percentage of enrollments to secondary education, and Theoretical duration of primary education. As we can see only GDPC, PES and TDP has p-value according to significant level:
+ 
+```{r reg happy, echo=T,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+reg <- lm(LEB ~ GDPPC + UNEMP + PES + TDP, data = edu)
+summary(reg)
+```
+
+So repeat process for them:
+```{r reg happy 2,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+summary(lm(LEB ~ GDPPC + PES + TDP, data = edu))
+```
+
+Therefore we can write the formula as follows: 
+**LEB = 65.4 + 0.003 GDPPC + 1.235 * PES - 1.44 * TDP**, where TDP is Theoretical duration of Primary education. 
+
+This can be interpreted purely mathematically, but of course in practical terms: for every additional $1,000 in GDP per capita, life expectancy increases by three years. Additionally, for every one percent increase in secondary education enrollment, life expectancy increases by 1.23 years, whereas every additional year of primary education decreases life expectancy by 1.44 years.So probably it is more benficial to study longer in college or university than in primary school :) 
+
+If we take into account only Percentage of enrollments to secondary education, we got a bit different coefficients:
+
+```{r leb-pes lm, echo=TRUE,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+lm(LEB ~ PES, data = edu)$coef
+
+```
+Lets plot it with Linear regression line:
+
+```{r leb-pes ggplot, echo=TRUE,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+ggplot(edu, aes(x = PES, y = LEB)) + 
+  geom_point(col = 'darkgreen') + 
+  geom_abline(slope = 1.640582, intercept = 57.821784, col = 'orange')
+```
+
+
+```{r leb-pes var, echo=FALSE,include=F, error=FALSE, warning=FALSE, message=FALSE}
+leb_pes <- ggplot(edu, aes(x = PES, y = LEB)) + 
+  geom_point(col = 'darkgreen') + 
+  geom_abline(slope = 1.640582, intercept = 57.821784, col = 'orange') + 
+  ylab('Life expectancy') +
+  xlab('Percantage of enrolments in Secondary Education')
+
+leb_pes
+```
+
+And with non linear regression:
+
+```{r leb-pes ggplot2, echo=FALSE,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+ggplot(edu, aes(x = PES, y = LEB)) + 
+  geom_point() + 
+  geom_smooth()
+```
+
+
+
+
+
+# Happiness and Education relationship
+
+## Joining 2 datasets
+
+As a  part of preparation for joining process we decided to change something. Education data set has data only for 2014 year, that's why we create a new data frame from happiness one with data only for 2014 and test it:
+
+```{r year14, echo = TRUE, include = TRUE, echo = TRUE}
+
+happy14 <- filter(happiness, year == 2014)
+
+```
+
+
+```{r year14 check, echo = TRUE, include = FALSE, echo = TRUE}
+
+summary(happy14$year)
+
+```
+
+<!-- ```{r join1, echo=FALSE,include=TRUE, error=FALSE, warning=FALSE, message=FALSE} -->
+<!-- colnames(edu)[colnames(edu) == 'Country.Name'] <- 'Country' -->
+
+<!-- edu_happy<- left_join(edu,  -->
+<!--                       happy14, -->
+<!--                       by = c("Country" = "Country name")) -->
+
+<!-- str(edu_happy) -->
+<!-- ``` -->
+
+```{r rename, echo=F,include=F, error=FALSE, warning=FALSE, message=FALSE}
+
+colnames(edu)[colnames(edu) == 'Country.Name'] <- 'Country'
+
+```
+After trying to join two dataframes by countries using left join choosing smaller dataset as a reference we realized that still have irrelevant data. So we decided to to use inner join to leave only  countries with data in both datasets. Let's do it, join and check the result
+
+```{r join2, echo=T,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+
+colnames(edu)[colnames(edu) == 'Country.Name'] <- 'Country'
+
+edu_happy<- inner_join(edu, happy14,
+                      by = c("Country" = "Country name"))
+
+str(edu_happy)
+
+```
+
+Now it seems much better. 
+
+```{r change ladder to happiness, echo=FALSE,include=F, error=FALSE, warning=FALSE, message=FALSE}
+names(edu_happy)[names(edu_happy) == "Life Ladder"] <- "happiness"
+
+```
+
+## Investigation
+
+Now we are ready to investigate relationships. 
+
+Let's check the paired graphs: 
+
+```{r pairs_join, echo=FALSE,include=TRUE, error=FALSE, warning=FALSE, message=FALSE }
+
+pairs(happiness ~ PRPE + OOCP + PES + UNEMP + TDP, data = edu_happy, 
+      col = "darkseagreen3",
+      main = "Correlation Graph (Happiness)")
+
+```
+<br>As we can see there is some correlation between Happiness and Enrollments in Secondary education, and also probably with unemployment rate. 
+
+Checking it explicitly  with finding correlation. Before that we need to excluding irrelevant columns.
+```{r cor edu hapy, echo=F,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+short_edu_happy <- edu_happy[,c(4,8,10,11,12,15)]
+cco2 <- cor(short_edu_happy)
+ggcorrplot(cco2, colors = c("red","white","blue"),
+           title = "Correlation Matrix")
+
+```
+
+The biggest positive correlations are between Happiness and GDP per capita (nothing new) and Enrollments to Secondary Education (that is a new thing!). Also we can see quite strong negative correlation with Percentage of repeaters in Primary Education
+
+Check it out with linear regression: 
+```{r lm edu happy short, echo=FALSE,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+summary(lm(happiness ~ ., data = short_edu_happy))
+```
+If we leave only factors with significant p-values, we get 
+
+```{r lm edu happy shorter, echo=FALSE,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+summary(lm(happiness ~ PES + GDPPC + PRPE, data = short_edu_happy))
+```
+
+
+Therefore we can represent the relationship with follow formula: 
+
+**Happiness = 3.859 + 0.003 GDPPC + 0.16 PES - 0.059 PRPE** 
+
+Which can be interpreted as follows: with every additional $1 GDP per capita the mean level of happiness of citizens increasing on 0.003 points, one additional percent of enrolments to additional education increases that on 0.16 points and one additional percent decrease mean level of happiness on 0.059 points. And ctizen of imaginable country with no GDP or education would be Happy on 3.9 out of 10. Not so much.  
+
+Also we plot these and additional relationships separately with corresponding regression line: 
+```{r lm paired, echo=FALSE,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+
+par(mfrow = c(2,2))
+
+plot(happiness ~ PRPE, data = short_edu_happy,
+     col = "darkseagreen3",
+     ylab = 'Happiness',
+     xlab = 'Percentage of repeaters in Primary Education')
+abline(lm(happiness ~ PRPE, data = short_edu_happy), col = "orange")
+
+plot(happiness ~ GDPPC, data = short_edu_happy,
+     col = "darkseagreen3",
+     ylab = 'Happiness',
+     xlab = 'GDP per Capita')
+abline(lm(happiness ~ GDPPC, data = short_edu_happy), col = "orange")
+
+plot(happiness ~ PES, data = short_edu_happy,
+     col = "darkseagreen3",
+     ylab = 'Happiness',
+     xlab = 'Percentage of Enrolment in Secondary Education')
+abline(lm(happiness ~ PES, data = short_edu_happy), col = "orange")
+
+plot(happiness ~ PEP, data = edu_happy,
+     col = "darkseagreen3",
+     ylab = 'Happiness',
+     xlab = 'Percentage of Enrolment in Primary Education')
+abline(lm(happiness ~ PEP, data = edu_happy), col = "orange")
+
+```
+
+Also if we consider relationship only between Happiness and Secondary education separetely, we get follows coefficients and R squared.  
+
+```{r lm hap pes, echo=T,include=TRUE, error=FALSE, warning=FALSE, message=FALSE }
+lm(happiness ~ PES, data = edu_happy)$coef
+summary(lm(happiness ~ PES, data = edu_happy))$r.squared
+
+```
+
+We can interpret as with each additional percent of enrollments across population the overall level of happiness is increasing on 0.23 points. Not so bad. Seem it is worth it.
+
+Relationship with percantage of Repeaters. 
+
+
+```{r hap prpe, echo=FALSE,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+lm(happiness ~ PRPE, data = edu_happy)$coef
+summary(lm(happiness ~ PRPE, data = edu_happy))$r.squared
+```
+
+
+With every additional percent of indicator of Percentage of Repeaters of Primary Education the mean of happiness self-assessments decreases on 0,123 points. And with such regression can be explained about 29% of values which is far from large number. 
+
+
+```{r gg happy pes, echo=FALSE,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+ggplot(edu_happy, 
+       mapping = aes(y = happiness,
+                     x = PES)) +
+  geom_point(col = 'darkgreen')  +
+  geom_smooth(method = 'lm') + 
+  ggtitle('Relationship between Happiness and Enrolments to Secondary education') +
+  ylab('Happiness') +
+  xlab('Percentage of Enrolment in Secondary Education' )
+
+```
+
+Overall we would interpret that in very simple way: more you learn — more happy you are! 
+
+
+```{r gg happy prpe, echo=FALSE,include=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+ggplot(edu_happy,mapping = aes(y = happiness, 
+                       x = PRPE)) +
+  geom_point(col = 'red') +
+  geom_smooth(method ='lm', col = 'blue') + 
+  ggtitle('Relationship between Happiness and Percentage of repeaters in Primary Education') +
+  ylab('Happiness') +
+  xlab('Percentage of repeaters in Primary Education' )
+
+```
+<br> So please don't drop the Primary school in order not to repeat it :) 
+
+
+# Making it interactive with Plotly (Chapter of choice)
+
+To make the plots more informative and interesting we decided to plot some of them in other way.
+
+Explore the Relationship between Happiness and Education. While hovering you can see respective country and exact values: 
+
+```{r plotly pes, echo=T, include=T, error = FALSE, warning = FALSE, message = F}
+hap_pes <- ggplot(edu_happy,
+                  mapping = aes(y = happiness,
+                                x = PES, text = paste('Country: ', Country, '<br>', 'Enrolments to Secondary Education: ', round(PES,1), '% <br>', 'Happiness: ', round(happiness,1)))) +
+  geom_point(col = 'darkgreen')  +
+  ggtitle('Relationship between Happiness and Enrolments to Secondary education') +
+  ylab('Happiness') +
+  xlab('Percentage of Enrolment in Secondary Education' )
+
+ggplotly(hap_pes, tooltip = 'text')
+```
+
+<br><br>Happiness against Percentage of repeaters in Primary Education
+
+```{r plotly prpe, echo=F, include=T, error = FALSE, warning = FALSE, message = F }
+hap_prpe <- edu_happy %>%
+   ggplot(mapping = aes(y = happiness,
+x = PRPE, text = paste('Country: ', Country, '<br>', 'Repeaters Primary Education: ', round(PRPE,1), '%<br>', 'Happiness: ', round(happiness,1)))) +
+   geom_point(col = 'red') +
+   ggtitle('Relationship between Happiness and Percentage of repeaters in Primary Education') +
+   ylab('Happiness') +
+   xlab('Percentage of repeaters in Primary Education' )
+ 
+ 
+ ggplotly(hap_prpe, tooltip = 'text')
+ 
+ ```
+
+<br><br>Life Expectansy vs. Percantage of enrolments in Secondary Education again: 
+
+```{r plotly add, echo = F}
+ggplotly(leb_pes)
+
+```
+
+
+A time series with happiness indicators and its change for some of the countries we were interested in. You can hover over the lines and see specific values, or by clicking leave only the countries you are interested in. 
+```{r plotly add 2, echo = F}
+
+ggplotly(ts11)
+
+```
+
+# Conclusion
+
+In the course of the work, we looked at two datasets and identified the dependencies between the indicators within each. We also tried to discover the relationship between the indicator of happiness, its subjective evaluation by each person, and the indicators of education. Despite the fact that the revealed linear dependence between the percentage of people entering higher education and the percentage remaining in the second year explains only 40% of the indicators, we believe that it has the right to exist. We can express it in the formula <br> **Happiness = 4.3 + 0.2 PES - 0.1 PRPE**
+
+It is also difficult to talk about causality here, nevertheless, we wanted to modestly assume, and we believe, that education can raise the level of happiness of a particular person. 
+
+```{r concl, include = F}
+summary(lm(happiness ~ PRPE+PES, data = edu_happy))$r.squared
+
+lm(happiness ~ PRPE+PES, data = edu_happy)$coefs
+
+```
+
+Thank you very much for your attention and fascinating lectures. Any comments, recommendations, or errors, please report to muhammedkazim.cakmak@stud.hslu.ch and dmytro.rudyka@stud.hslu.ch.
+
+<br><br><br><br><br>
+
+<!-- #chapter of choice 2: package DataExplorer (I'm not sure if it is working with knitting) -->
+
+<!-- ```{r dataExplorer} -->
+<!-- create_report(edu_happy) -->
+<!-- plot(edu_happy) -->
+<!-- create_report(happy) #does not work -->
+
+<!-- ``` -->
+
+
+
+
+
+
+
